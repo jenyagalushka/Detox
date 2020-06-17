@@ -19,14 +19,6 @@ class Device {
     await this.deviceDriver.prepare();
   }
 
-  createPayloadFileAndUpdatesParamsObject(key, launchKey, params, baseLaunchArgs) {
-    const payloadFilePath = this.deviceDriver.createPayloadFile(params[key]);
-    baseLaunchArgs[launchKey] = payloadFilePath;
-    //`params` will be used later for `deliverPayload`, so remove the actual notification and add the file URL
-    delete params[key];
-    params[launchKey] = payloadFilePath;
-  }
-
   async launchApp(params = {newInstance: false}, bundleId) {
     const payloadParams = ['url', 'userNotification', 'userActivity'];
     const hasPayload = this._assertHasSingleParam(payloadParams, params);
@@ -48,9 +40,9 @@ class Device {
         baseLaunchArgs['detoxSourceAppOverride'] = params.sourceApp;
       }
     } else if (params.userNotification) {
-      this.createPayloadFileAndUpdatesParamsObject('userNotification', 'detoxUserNotificationDataURL', params, baseLaunchArgs);
+      this._createPayloadFileAndUpdatesParamsObject('userNotification', 'detoxUserNotificationDataURL', params, baseLaunchArgs);
     } else if (params.userActivity) {
-      this.createPayloadFileAndUpdatesParamsObject('userActivity', 'detoxUserActivityDataURL', params, baseLaunchArgs);
+      this._createPayloadFileAndUpdatesParamsObject('userActivity', 'detoxUserActivityDataURL', params, baseLaunchArgs);
     }
 
     if (params.permissions) {
@@ -64,7 +56,7 @@ class Device {
     const _bundleId = bundleId || this._bundleId;
     if (this._isAppInBackground(params, _bundleId)) {
       if (hasPayload) {
-        await this.deviceDriver.deliverPayload({...params, delayPayload: true});
+        await this.deviceDriver.predeliverPayload({...params});
       }
     }
 
@@ -102,6 +94,14 @@ class Device {
     }
 
     return this.deviceDriver.takeScreenshot(this._deviceId, name);
+  }
+
+  _createPayloadFileAndUpdatesParamsObject(key, launchKey, params, baseLaunchArgs) {
+    const payloadFilePath = this.deviceDriver.createPayloadFile(params[key]);
+    baseLaunchArgs[launchKey] = payloadFilePath;
+    //`params` will be used later for `deliverPayload`, so remove the actual notification and add the file URL
+    delete params[key];
+    params[launchKey] = payloadFilePath;
   }
 
   _isAppInBackground(params, _bundleId) {
@@ -220,8 +220,9 @@ class Device {
 
   async _sendPayload(key, params) {
     const payloadFilePath = this.deviceDriver.createPayloadFile(params);
-    let payload = {};
-    payload[key] = payloadFilePath;
+    const payload = {
+      [key]: payloadFilePath,
+    };
     await this.deviceDriver.deliverPayload(payload);
     this.deviceDriver.cleanupRandomDirectory(payloadFilePath);
   }

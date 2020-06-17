@@ -34,11 +34,18 @@ describe('Android driver', () => {
   }
   MockInstrumentationLogsParserClass.INSTRUMENTATION_STACKTRACE_MOCK = 'Stacktrace mock';
 
+  class MockInvocationManagerClass {
+    constructor() {
+      Object.assign(this, invocationManager);
+    }
+  }
+
   let logger;
   let client;
   let getAbsoluteBinaryPath;
   let fs;
   let exec;
+  let detoxApi;
   beforeEach(() => {
     jest.mock('fs', () => ({
       existsSync: jest.fn(),
@@ -86,6 +93,9 @@ describe('Android driver', () => {
       },
       waitUntilReady: jest.fn(),
     };
+
+    jest.mock('../../../android/espressoapi/Detox');
+    detoxApi = require('../../../android/espressoapi/Detox');
   });
 
   let adb;
@@ -113,6 +123,15 @@ describe('Android driver', () => {
     jest.mock('./tools/TempFileXfer', () => MockTempFileXferClass);
   });
 
+  let invocationManager;
+  beforeEach(() => {
+    const InvocationManager = jest.genMockFromModule('../../../invoke').InvocationManager;
+    invocationManager = new InvocationManager();
+    jest.mock('../../../invoke', () => ({
+      InvocationManager: MockInvocationManagerClass,
+    }))
+  });
+
   let uut;
   beforeEach(() => {
     const AndroidDriver = require('./AndroidDriver');
@@ -136,7 +155,7 @@ describe('Android driver', () => {
     });
   });
 
-  describe('Notification data handling (user-notification-data-URL arg)', () => {
+  describe('Notification data handling in app launch (user-notification-data-URL arg)', () => {
     const launchArgs = Object.freeze({
       detoxUserNotificationDataURL: '/path/to/notif.data',
     });
@@ -170,6 +189,44 @@ describe('Android driver', () => {
         expect.arrayContaining(['detoxUserNotificationDataURL', mockNotificationDataTargetPath]),
         undefined,
       );
+    });
+  });
+
+  describe('Notification data handling in 2nd app launch (i.e. when running)', () => {
+    const launchArgs = Object.freeze({
+      detoxUserNotificationDataURL: '/path/to/notif.data',
+    });
+
+    const detoxApiInvocation = {
+      method: 'startActivityFromNotification-mocked'
+    };
+    const mockStartActivityInvokeApi = () => {
+      detoxApi.startActivityFromNotification.mockReturnValue(detoxApiInvocation);
+    }
+    const assertActivityStartInvoked = () => {
+      expect(invocationManager.execute).toHaveBeenCalledWith(detoxApiInvocation);
+      expect(detoxApi.startActivityFromNotification).toHaveBeenCalledWith(mockNotificationDataTargetPath);
+    }
+    const assertInstrumentationSpawnedOnce = () => expect(adb.spawnInstrumentation).toHaveBeenCalledTimes(1);
+
+    beforeEach(async () => {
+      await uut.launchApp(deviceId, bundleId, {}, '')
+    });
+
+    it('should send notification data to device', async () => {
+      await uut.launchApp(deviceId, bundleId, launchArgs, '')
+
+      expect(fileXfer.prepareDestinationDir).toHaveBeenCalledWith(deviceId);
+      expect(fileXfer.send).toHaveBeenCalledWith(deviceId, launchArgs.detoxUserNotificationDataURL, 'notification.json');
+    });
+
+    it('should start the app using ', async () => {
+      mockStartActivityInvokeApi();
+
+      await uut.launchApp(deviceId, bundleId, launchArgs, '')
+
+      assertActivityStartInvoked();
+      assertInstrumentationSpawnedOnce();
     });
   });
 

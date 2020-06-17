@@ -42,29 +42,40 @@ describe(':ios: User Notifications', () => {
 });
 
 describe(':android: User Notifications', () => {
+  const googleProjectId = 284440699462;
+  const userNotification = {
+    payload: {
+      from: googleProjectId,
+      userData: 'userDataValue',
+      userDataArray: ['rock', 'paper', 'scissors'],
+      'google.sent_time': 1592133826891,
+      'google.ttl': 2419200,
+      'google.original_priority': 'high',
+      'collapse_key': 'com.wix.detox.test',
+    },
+  };
+
   async function assertNotificationData(key, expectedValue) {
     await expect(element(by.id(`notificationData-${key}.name`))).toBeVisible();
     await expect(element(by.id(`notificationData-${key}.value`))).toHaveText(expectedValue);
   }
 
-  it('should launch app with extras', async () => {
-    const googleProjectId = 284440699462;
-    const userNotification = {
-      payload: {
-        from: googleProjectId,
-        userData: 'userDataValue',
-        userDataArray: ['rock', 'paper', 'scissors'],
-        'google.sent_time': 1592133826891,
-        'google.ttl': 2419200,
-        'google.original_priority': 'high',
-        'collapse_key': 'com.wix.reactnativenotifications.app',
-      },
-    };
+  it('should launch app with data', async () => {
     await device.launchApp({ newInstance: true, userNotification });
     await element(by.text('Launch-Notification')).tap();
     await expect(element(by.text('Launch-notification Data'))).toBeVisible();
     await assertNotificationData('from', googleProjectId.toString());
     await assertNotificationData('userData', userNotification.payload.userData);
     await assertNotificationData('userDataArray', JSON.stringify(userNotification.payload.userDataArray));
+  });
+
+  it('should resume app with data', async () => {
+    await device.launchApp({ newInstance: true });
+    console.log('Sending app to background...');
+    await device.sendToHome();
+    console.log('Resuming app with user notification');
+    await device.launchApp({ newInstance: false, userNotification });
+    await element(by.text('Launch-Notification')).tap();
+    await assertNotificationData('userData', userNotification.payload.userData);
   });
 });
